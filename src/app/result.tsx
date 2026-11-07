@@ -1,984 +1,282 @@
-// src/app/result.tsx
-
-import React, {
-  useEffect,
-  useState,
-} from 'react';
-
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-
-import {
-  router,
-} from 'expo-router';
-
-import {
-  SafeAreaView,
-} from 'react-native-safe-area-context';
-
-import {
-  File,
-} from 'expo-file-system';
-
-import {
-  scanObject,
-  formatPriceRange,
-  type ScannerResult,
-} from '@/services/scannerApi';
+import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ObjectCard from '@/components/ObjectCard';
+import ProductCard from '@/components/ProductCard';
+import { colors, radius, shadow } from '@/constants/theme';
+import { scanObject, type ScannerResult } from '@/services/scannerApi';
+import { getCapturedImage } from '@/services/scannerSession';
+import { formatPrice, formatPriceRange, googleShoppingUrl } from '@/services/utils';
 
-import {
-  getCapturedImageUri,
-} from '@/services/scannerSession';
+type Status = 'analyzing' | 'done' | 'error';
 
 export default function ResultScreen() {
-
-  // ============================================================
-  // GET IMAGE URI FROM SESSION
-  // ============================================================
-
-  const [
-    imageUri,
-    setImageUri,
-  ] = useState<string | null>(
-    null
-  );
-
-  const [
-    result,
-    setResult,
-  ] = useState<ScannerResult | null>(
-    null
-  );
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    error,
-    setError,
-  ] = useState<string | null>(
-    null
-  );
-
-  // ============================================================
-  // LOAD IMAGE URI
-  // ============================================================
+  // Read synchronously so there is no "no image" flash on the first render.
+  const [image] = useState(getCapturedImage);
+  const [status, setStatus] = useState<Status>('analyzing');
+  const [result, setResult] = useState<ScannerResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const uri =
-      getCapturedImageUri();
-
-    console.log(
-      '📷 Session Image URI:',
-      uri
-    );
-
-    setImageUri(uri);
-  }, []);
-
-  // ============================================================
-  // ANALYZE IMAGE
-  // ============================================================
-
-  useEffect(() => {
-
-    if (!imageUri) {
-      return;
-    }
-
+    if (!image) return;
     let cancelled = false;
 
-    const analyze = async () => {
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        // ======================================================
-        // ORIGINAL URI
-        // ======================================================
-
-        console.log(
-          '📷 Using original camera URI:',
-          imageUri
-        );
-
-        // ======================================================
-        // CREATE FILE
-        // ======================================================
-
-        console.log(
-          '📁 Creating File object...'
-        );
-
-        const imageFile =
-          new File(imageUri);
-
-        // ======================================================
-        // CHECK FILE
-        // ======================================================
-
-        console.log(
-          '📁 Image exists:',
-          imageFile.exists
-        );
-
-        if (!imageFile.exists) {
-          throw new Error(
-            'Captured image file no longer exists.'
-          );
-        }
-
-        console.log(
-          '📏 Image size:',
-          imageFile.size
-        );
-
-        if (
-          !imageFile.size ||
-          imageFile.size <= 0
-        ) {
-          throw new Error(
-            'Captured image is empty.'
-          );
-        }
-
-        // ======================================================
-        // BASE64
-        // ======================================================
-
-        console.log(
-          '🔄 Converting image to Base64...'
-        );
-
-        const imageBase64 =
-          await imageFile.base64();
-
-        if (!imageBase64) {
-          throw new Error(
-            'Unable to convert captured image to Base64.'
-          );
-        }
-
-        console.log(
-          '✅ Image converted to Base64'
-        );
-
-        console.log(
-          '📦 Base64 length:',
-          imageBase64.length
-        );
-
-        // ======================================================
-        // BACKEND
-        // ======================================================
-
-        console.log(
-          '🤖 Sending image to AI...'
-        );
-
-        const scannerResult =
-          await scanObject(
-            imageBase64
-          );
-
-        console.log(
-          '✅ AI analysis completed'
-        );
-
-        // ======================================================
-        // SAVE RESULT
-        // ======================================================
-
-        if (!cancelled) {
-          setResult(
-            scannerResult
-          );
-        }
-
-      } catch (err) {
-
-        console.error(
-          '❌ Image analysis failed:',
-          err
-        );
-
-        if (!cancelled) {
-
-          const message =
-            err instanceof Error
-              ? err.message
-              : 'Unable to analyze image.';
-
-          setError(message);
-        }
-
-      } finally {
-
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    analyze();
+    scanObject(image.dataUrl)
+      .then((scan) => {
+        if (cancelled) return;
+        setResult(scan);
+        setStatus('done');
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Unable to analyse the image.');
+        setStatus('error');
+      });
 
     return () => {
       cancelled = true;
     };
+  }, [image, attempt]);
 
-  }, [imageUri]);
+  const retry = useCallback(() => {
+    setStatus('analyzing');
+    setError(null);
+    setAttempt((n) => n + 1);
+  }, []);
 
-  // ============================================================
-  // NO IMAGE
-  // ============================================================
+  const scanAgain = useCallback(() => router.replace('/scanner'), []);
+  const openUrl = useCallback((url: string) => {
+    WebBrowser.openBrowserAsync(url).catch(() => undefined);
+  }, []);
 
-  if (!imageUri) {
+  if (!image) {
     return (
-      <SafeAreaView
-        style={styles.container}
-        edges={[
-          'top',
-          'bottom',
-        ]}
-      >
-        <View
-          style={styles.emptyContainer}
-        >
-
-          <Text
-            style={styles.emptyIcon}
-          >
-            📷
-          </Text>
-
-          <Text
-            style={styles.emptyTitle}
-          >
-            No Image Found
-          </Text>
-
-          <Text
-            style={styles.emptyText}
-          >
-            Please capture an object first.
-          </Text>
-
-          <Pressable
-            style={
-              styles.primaryButton
-            }
-            onPress={() =>
-              router.replace(
-                '/scanner'
-              )
-            }
-          >
-            <Text
-              style={
-                styles.primaryButtonText
-              }
-            >
-              Scan Object
-            </Text>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>📷</Text>
+          <Text style={styles.emptyTitle}>No image yet</Text>
+          <Text style={styles.emptyText}>Take a photo or choose one from your library first.</Text>
+          <Pressable style={styles.primaryButton} onPress={scanAgain}>
+            <Text style={styles.primaryButtonText}>Scan an Object</Text>
           </Pressable>
-
         </View>
       </SafeAreaView>
     );
   }
 
-  // ============================================================
-  // RESULT SCREEN
-  // ============================================================
+  const currency = result?.priceRange.currency ?? 'INR';
 
   return (
-    <SafeAreaView
-      style={styles.container}
-      edges={[
-        'top',
-        'bottom',
-      ]}
-    >
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-
-        <Pressable
-          style={styles.backButton}
-          onPress={() =>
-            router.back()
-          }
-        >
-          <Text
-            style={
-              styles.backButtonText
-            }
-          >
-            ‹
-          </Text>
+        <Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Go back">
+          <Text style={styles.backButtonText}>‹</Text>
         </Pressable>
-
-        <Text
-          style={styles.headerTitle}
-        >
-          Scan Result
-        </Text>
-
-        <View
-          style={styles.headerSpacer}
-        />
-
+        <Text style={styles.headerTitle}>Scan Result</Text>
+        <Pressable style={styles.headerAction} onPress={scanAgain} accessibilityLabel="Scan another object">
+          <Text style={styles.headerActionText}>New scan</Text>
+        </Pressable>
       </View>
 
-      {/* ======================================================
-          CONTENT
-      ====================================================== */}
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={
-          styles.scrollContent
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
-      >
-
-        {/* ==================================================
-            IMAGE
-        ================================================== */}
-
-        <View
-          style={styles.imageCard}
-        >
-          <Image
-            source={{
-              uri: imageUri,
-            }}
-            style={styles.image}
-            resizeMode="cover"
-          />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.imageCard}>
+          <Image source={{ uri: image.uri }} style={styles.image} resizeMode="cover" />
+          {status === 'analyzing' ? (
+            <View style={styles.imageOverlay}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+            </View>
+          ) : null}
         </View>
 
-        {/* ==================================================
-            LOADING
-        ================================================== */}
-
-        {loading ? (
-          <View
-            style={
-              styles.loadingContainer
-            }
-          >
-
-            <ActivityIndicator
-              size="large"
-              color="#111827"
-            />
-
-            <Text
-              style={
-                styles.loadingTitle
-              }
-            >
-              Analyzing Object...
-            </Text>
-
-            <Text
-              style={
-                styles.loadingText
-              }
-            >
-              AI is identifying the object
-              and searching products.
-            </Text>
-
+        {status === 'analyzing' ? (
+          <View style={styles.statusCard}>
+            <Text style={styles.statusTitle}>Analysing object…</Text>
+            <Text style={styles.statusText}>Identifying the object with AI, then looking up shopping listings.</Text>
           </View>
         ) : null}
 
-        {/* ==================================================
-            ERROR
-        ================================================== */}
-
-        {!loading && error ? (
-          <View
-            style={styles.errorCard}
-          >
-
-            <Text
-              style={styles.errorIcon}
-            >
-              ⚠️
-            </Text>
-
-            <Text
-              style={styles.errorTitle}
-            >
-              Analysis Failed
-            </Text>
-
-            <Text
-              style={styles.errorText}
-            >
-              {error}
-            </Text>
-
-            <Pressable
-              style={
-                styles.retryButton
-              }
-              onPress={() =>
-                router.replace(
-                  '/scanner'
-                )
-              }
-            >
-              <Text
-                style={
-                  styles.retryButtonText
-                }
-              >
-                Scan Again
-              </Text>
-            </Pressable>
-
+        {status === 'error' ? (
+          <View style={[styles.statusCard, styles.errorCard]}>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.statusTitle}>Analysis failed</Text>
+            <Text style={styles.statusText}>{error}</Text>
+            <View style={styles.buttonRow}>
+              <Pressable style={[styles.primaryButton, styles.flexButton]} onPress={retry}>
+                <Text style={styles.primaryButtonText}>Try again</Text>
+              </Pressable>
+              <Pressable style={[styles.secondaryButton, styles.flexButton]} onPress={scanAgain}>
+                <Text style={styles.secondaryButtonText}>New photo</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
-        {/* ==================================================
-            RESULT
-        ================================================== */}
-
-        {!loading &&
-        !error &&
-        result ? (
+        {status === 'done' && result ? (
           <>
-            {/* OBJECT */}
+            <ObjectCard object={result.object} />
 
-            <ObjectCard
-              object={result.object}
-            />
-
-            {/* PRICE */}
-
-            <View
-              style={styles.priceCard}
-            >
-
-              <Text
-                style={styles.priceLabel}
-              >
-                Estimated Market Price
+            <View style={styles.priceCard}>
+              <Text style={styles.priceLabel}>Market price</Text>
+              <Text style={styles.priceValue}>
+                {formatPriceRange(result.priceRange.min, result.priceRange.max, currency)}
               </Text>
-
-              <Text
-                style={styles.priceValue}
-              >
-                {formatPriceRange(
-                  result.priceRange.min,
-                  result.priceRange.max
-                )}
+              {result.priceRange.median !== null && result.products.length > 2 ? (
+                <Text style={styles.priceMedian}>Typical price {formatPrice(result.priceRange.median, currency)}</Text>
+              ) : null}
+              <Text style={styles.priceSource}>
+                {result.products.length > 0
+                  ? `From ${result.products.length} Google Shopping listing${result.products.length === 1 ? '' : 's'}`
+                  : 'No live listings available'}
               </Text>
-
-              <Text
-                style={styles.priceSource}
-              >
-                Based on available shopping listings
-              </Text>
-
             </View>
 
-            {/* PRODUCTS */}
-
-            {result.products.length >
-            0 ? (
-              <View
-                style={
-                  styles.productsSection
-                }
-              >
-
-                <Text
-                  style={
-                    styles.productsTitle
-                  }
-                >
-                  Matching Products
+            {result.shoppingError ? (
+              <View style={styles.noticeCard}>
+                <Text style={styles.noticeTitle}>
+                  {result.shoppingDisabled ? 'Price search is turned off' : 'Price search failed'}
                 </Text>
-
-                {result.products.map(
-                  (
-                    product,
-                    index
-                  ) => (
-
-                    <View
-                      key={`${product.name}-${index}`}
-                      style={
-                        styles.productCard
-                      }
-                    >
-
-                      {product.imageUrl ? (
-                        <Image
-                          source={{
-                            uri:
-                              product.imageUrl,
-                          }}
-                          style={
-                            styles.productImage
-                          }
-                        />
-                      ) : (
-                        <View
-                          style={
-                            styles.productImagePlaceholder
-                          }
-                        >
-                          <Text>
-                            🛍️
-                          </Text>
-                        </View>
-                      )}
-
-                      <View
-                        style={
-                          styles.productContent
-                        }
-                      >
-
-                        <Text
-                          style={
-                            styles.productName
-                          }
-                          numberOfLines={2}
-                        >
-                          {product.name}
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.productSource
-                          }
-                        >
-                          {product.source ||
-                            'Shopping listing'}
-                        </Text>
-
-                        {product.price !==
-                        null ? (
-                          <Text
-                            style={
-                              styles.productPrice
-                            }
-                          >
-                            ₹
-                            {product.price.toLocaleString(
-                              'en-IN'
-                            )}
-                          </Text>
-                        ) : (
-                          <Text
-                            style={
-                              styles.unavailablePrice
-                            }
-                          >
-                            Price unavailable
-                          </Text>
-                        )}
-
-                      </View>
-
-                    </View>
-                  )
-                )}
-
+                <Text style={styles.noticeText}>
+                  {result.shoppingDisabled
+                    ? 'Add SERPAPI_KEY to server/.env to show live product listings and prices.'
+                    : result.shoppingError}
+                </Text>
               </View>
-            ) : (
-              <View
-                style={
-                  styles.noProductsCard
-                }
-              >
+            ) : null}
 
-                <Text
-                  style={
-                    styles.noProductsIcon
-                  }
-                >
-                  🔎
-                </Text>
-
-                <Text
-                  style={
-                    styles.noProductsTitle
-                  }
-                >
-                  No Matching Products
-                </Text>
-
-                <Text
-                  style={
-                    styles.noProductsText
-                  }
-                >
-                  We identified the object,
-                  but could not find current
-                  shopping listings.
-                </Text>
-
+            {result.products.length > 0 ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Matching products</Text>
+                {result.products.map((product, index) => (
+                  <ProductCard
+                    key={`${product.productUrl ?? product.name}-${index}`}
+                    product={product}
+                    onPress={product.productUrl ? () => openUrl(product.productUrl as string) : undefined}
+                  />
+                ))}
               </View>
-            )}
+            ) : null}
 
+            <Pressable
+              style={styles.searchLink}
+              onPress={() => openUrl(googleShoppingUrl(result.object.searchQuery || result.object.name))}
+            >
+              <Text style={styles.searchLinkText}>Search “{result.object.searchQuery}” on Google Shopping ›</Text>
+            </Pressable>
           </>
         ) : null}
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ============================================================
-// STYLES
-// ============================================================
-
 const styles = StyleSheet.create({
-
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F7F8',
-  },
-
-  // ==========================================================
-  // HEADER
-  // ==========================================================
+  container: { flex: 1, backgroundColor: colors.background },
 
   header: {
-    height: 60,
+    height: 58,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: colors.border,
   },
+  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  backButtonText: { fontSize: 34, color: colors.text, marginTop: -4 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
+  headerAction: { paddingHorizontal: 10, paddingVertical: 8 },
+  headerActionText: { color: colors.accent, fontWeight: '700', fontSize: 14 },
 
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  backButtonText: {
-    fontSize: 36,
-    lineHeight: 40,
-    color: '#111827',
-    fontWeight: '300',
-  },
-
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  headerSpacer: {
-    width: 42,
-  },
-
-  // ==========================================================
-  // SCROLL
-  // ==========================================================
-
-  scrollView: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    paddingBottom: 30,
-  },
-
-  // ==========================================================
-  // IMAGE
-  // ==========================================================
+  scrollContent: { paddingBottom: 36 },
 
   imageCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 20,
+    margin: 16,
+    marginBottom: 0,
+    height: 260,
+    borderRadius: radius.xl,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
   },
-
-  image: {
-    width: '100%',
-    height: 280,
-  },
-
-  // ==========================================================
-  // LOADING
-  // ==========================================================
-
-  loadingContainer: {
-    alignItems: 'center',
-    padding: 30,
-  },
-
-  loadingTitle: {
-    marginTop: 16,
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  loadingText: {
-    marginTop: 8,
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-
-  // ==========================================================
-  // ERROR
-  // ==========================================================
-
-  errorCard: {
-    margin: 16,
-    padding: 24,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-  },
-
-  errorIcon: {
-    fontSize: 40,
-  },
-
-  errorTitle: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  errorText: {
-    marginTop: 8,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-
-  retryButton: {
-    marginTop: 20,
-    backgroundColor: '#111827',
-    paddingHorizontal: 24,
-    paddingVertical: 13,
-    borderRadius: 12,
-  },
-
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-
-  // ==========================================================
-  // EMPTY
-  // ==========================================================
-
-  emptyContainer: {
-    flex: 1,
+  image: { width: '100%', height: '100%' },
+  imageOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(17,24,39,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 30,
   },
 
-  emptyIcon: {
-    fontSize: 60,
+  statusCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 22,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    ...shadow,
   },
-
-  emptyTitle: {
-    marginTop: 15,
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  emptyText: {
-    marginTop: 8,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-
-  primaryButton: {
-    marginTop: 25,
-    backgroundColor: '#111827',
-    paddingHorizontal: 25,
-    paddingVertical: 14,
-    borderRadius: 13,
-  },
-
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-
-  // ==========================================================
-  // PRICE
-  // ==========================================================
+  errorCard: { borderWidth: 1, borderColor: colors.dangerSoft },
+  errorIcon: { fontSize: 36, marginBottom: 6 },
+  statusTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  statusText: { marginTop: 6, fontSize: 14, lineHeight: 20, color: colors.textMuted, textAlign: 'center' },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 18, alignSelf: 'stretch' },
+  flexButton: { flex: 1, marginTop: 0, minWidth: 0 },
 
   priceCard: {
     marginHorizontal: 16,
-    marginTop: 4,
-    padding: 18,
-    borderRadius: 18,
-    backgroundColor: '#111827',
-  },
-
-  priceLabel: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-
-  priceValue: {
-    marginTop: 6,
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-  },
-
-  priceSource: {
-    marginTop: 6,
-    color: '#9CA3AF',
-    fontSize: 11,
-  },
-
-  // ==========================================================
-  // PRODUCTS
-  // ==========================================================
-
-  productsSection: {
-    marginTop: 20,
-    paddingHorizontal: 16,
-  },
-
-  productsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
     marginBottom: 12,
+    padding: 20,
+    borderRadius: radius.xl,
+    backgroundColor: colors.primary,
   },
+  priceLabel: { color: '#9CA3AF', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  priceValue: { marginTop: 6, color: '#FFFFFF', fontSize: 28, fontWeight: '800' },
+  priceMedian: { marginTop: 4, color: '#E5E7EB', fontSize: 14, fontWeight: '600' },
+  priceSource: { marginTop: 8, color: '#9CA3AF', fontSize: 12 },
 
-  productCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-
-  productImage: {
-    width: 82,
-    height: 82,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-
-  productImagePlaceholder: {
-    width: 82,
-    height: 82,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  productContent: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-
-  productName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    lineHeight: 18,
-  },
-
-  productSource: {
-    marginTop: 4,
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-
-  productPrice: {
-    marginTop: 5,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#059669',
-  },
-
-  unavailablePrice: {
-    marginTop: 5,
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-
-  // ==========================================================
-  // NO PRODUCTS
-  // ==========================================================
-
-  noProductsCard: {
+  noticeCard: {
     marginHorizontal: 16,
-    marginTop: 20,
-    padding: 24,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: radius.lg,
+    backgroundColor: colors.warningSoft,
+  },
+  noticeTitle: { color: '#92400E', fontWeight: '700', fontSize: 14 },
+  noticeText: { color: '#92400E', fontSize: 13, lineHeight: 19, marginTop: 4 },
+
+  section: { marginHorizontal: 16, marginTop: 4 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 10 },
+
+  searchLink: { marginHorizontal: 16, marginTop: 10, padding: 14, alignItems: 'center' },
+  searchLinkText: { color: colors.accent, fontWeight: '600', fontSize: 14, textAlign: 'center' },
+
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyIcon: { fontSize: 56 },
+  emptyTitle: { marginTop: 12, fontSize: 22, fontWeight: '700', color: colors.text },
+  emptyText: { marginTop: 8, fontSize: 15, color: colors.textMuted, textAlign: 'center' },
+
+  primaryButton: {
+    marginTop: 22,
+    minWidth: 200,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
     alignItems: 'center',
+  },
+  primaryButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '700' },
+  secondaryButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
   },
-
-  noProductsIcon: {
-    fontSize: 32,
-  },
-
-  noProductsTitle: {
-    marginTop: 10,
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  noProductsText: {
-    marginTop: 8,
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
+  secondaryButtonText: { color: colors.text, fontSize: 15, fontWeight: '600' },
 });

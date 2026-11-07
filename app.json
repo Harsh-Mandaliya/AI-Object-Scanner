@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "AI-Object-Scanner",
+    "name": "AI Object Scanner",
     "slug": "AI-Object-Scanner",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "aiobjectscanner",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon"
     },
@@ -26,13 +26,26 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "AI Object Scanner uses the camera to photograph objects so they can be identified."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AI Object Scanner lets you pick a photo of an object to identify it."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

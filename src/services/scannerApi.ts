@@ -1,592 +1,213 @@
-// src/services/scannerApi.ts
+// Client for the AI Object Scanner backend (server/).
+// API keys live only on the backend. Never put GROQ_API_KEY or SERPAPI_KEY in the app.
 
-// ============================================================
-// AI OBJECT SCANNER API
-// ============================================================
-//
-// Expo App
-//    ↓
-// scannerApi.ts
-//    ↓
-// Node.js Backend
-//    ↓
-// Groq Vision
-//    ↓
-// Object Information
-//    ↓
-// Google Shopping / SerpApi
-//    ↓
-// Products + Prices
-//
-// IMPORTANT:
-// API keys stay on the Node.js backend.
-// NEVER put GROQ_API_KEY or SERPAPI_KEY here.
-// ============================================================
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  'http://#IPCONFIG(IPv4):4000/api';
+import { resolveApiBaseUrl } from './utils';
 
-
-// ============================================================
-// TYPES
-// ============================================================
+// ------------------------------------------------------------
+// Types
+// ------------------------------------------------------------
 
 export type ObjectAnalysis = {
   name: string;
-
   brand: string | null;
-
   model: string | null;
-
   category: string;
-
   type: string;
-
   color: string | null;
-
   material: string | null;
-
   description: string;
-
   features: string[];
-
   confidence: number;
-
   searchQuery: string;
 };
 
-
 export type ProductResult = {
   name: string;
-
-  brand: string | null;
-
   price: number | null;
-
   currency: string;
-
   imageUrl: string | null;
-
   productUrl: string | null;
-
   source: string | null;
-
-  // These may be returned by the backend
-  // when available from the shopping provider.
-  rating?: number | null;
-
-  reviews?: number | null;
+  rating: number | null;
+  reviews: number | null;
 };
-
 
 export type PriceRange = {
   min: number | null;
-
   max: number | null;
-
+  median: number | null;
   currency: string;
 };
 
-
-export type ScannerResult = {
-  object: ObjectAnalysis;
-
+export type ShoppingResult = {
   products: ProductResult[];
-
   priceRange: PriceRange;
 };
 
+export type ScannerResult = ShoppingResult & {
+  object: ObjectAnalysis;
+  /** Set when identification worked but the price search did not. */
+  shoppingError: string | null;
+  shoppingDisabled: boolean;
+};
 
-// ============================================================
-// API RESPONSE HELPER
-// ============================================================
+export type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
 
-async function parseResponse(
-  response: Response
-): Promise<any> {
+export type HealthStatus = {
+  status: string;
+  version: string;
+  features: { vision: boolean; chat: boolean; shopping: boolean };
+  models: { vision: string; chat: string };
+  currency: string;
+};
 
-  const contentType =
-    response.headers.get(
-      'content-type'
-    ) || '';
+export class ApiError extends Error {
+  status: number;
+  code: string;
 
-  if (
-    contentType.includes(
-      'application/json'
-    )
-  ) {
-    return response.json();
-  }
-
-  const text =
-    await response.text();
-
-  return {
-    message:
-      text || 'Server returned an invalid response.',
-  };
-}
-
-
-// ============================================================
-// ANALYZE OBJECT
-// ============================================================
-
-export async function analyzeObject(
-  imageBase64: string
-): Promise<ObjectAnalysis> {
-
-  if (
-    !imageBase64 ||
-    typeof imageBase64 !== 'string'
-  ) {
-    throw new Error(
-      'No image was provided.'
-    );
-  }
-
-
-  try {
-
-    console.log(
-      '🔍 Sending image for object analysis...'
-    );
-
-
-    const response =
-      await fetch(
-        `${API_BASE_URL}/scanner/analyze`,
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-
-          body: JSON.stringify({
-            imageBase64,
-          }),
-        }
-      );
-
-
-    const data =
-      await parseResponse(
-        response
-      );
-
-
-    if (!response.ok) {
-
-      throw new Error(
-        data?.message ||
-        data?.error ||
-        `Scanner API error: ${response.status}`
-      );
-
-    }
-
-
-    if (!data?.object) {
-
-      throw new Error(
-        'Object information was not returned by the server.'
-      );
-
-    }
-
-
-    console.log(
-      '✅ Object identified:',
-      data.object.name
-    );
-
-
-    return data.object;
-
-  } catch (error) {
-
-    console.error(
-      '❌ Object analysis error:',
-      error
-    );
-
-
-    if (
-      error instanceof Error
-    ) {
-      throw error;
-    }
-
-
-    throw new Error(
-      'Unable to analyze the object.'
-    );
-
+  constructor(message: string, status = 0, code = 'ERROR') {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
   }
 }
 
-
-// ============================================================
-// SEARCH PRODUCTS
-// ============================================================
-
-export async function searchProducts(
-  searchQuery: string
-): Promise<ProductResult[]> {
-
-  if (
-    !searchQuery ||
-    !searchQuery.trim()
-  ) {
-    return [];
-  }
-
-
-  try {
-
-    console.log(
-      '🛒 Searching products:',
-      searchQuery
-    );
-
-
-    const response =
-      await fetch(
-        `${API_BASE_URL}/scanner/search`,
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type':
-              'application/json',
-          },
-
-          body: JSON.stringify({
-            query:
-              searchQuery.trim(),
-          }),
-        }
-      );
-
-
-    const data =
-      await parseResponse(
-        response
-      );
-
-
-    if (!response.ok) {
-
-      throw new Error(
-        data?.message ||
-        data?.error ||
-        `Product search error: ${response.status}`
-      );
-
-    }
-
-
-    const products =
-      Array.isArray(
-        data?.products
-      )
-        ? data.products
-        : [];
-
-
-    console.log(
-      `✅ Products found: ${products.length}`
-    );
-
-
-    return products;
-
-  } catch (error) {
-
-    console.error(
-      '❌ Product search error:',
-      error
-    );
-
-
-    if (
-      error instanceof Error
-    ) {
-      throw error;
-    }
-
-
-    throw new Error(
-      'Unable to search products.'
-    );
-
-  }
-}
-
-
-// ============================================================
-// COMPLETE SCAN
-// ============================================================
-//
-// This performs:
-//
-// 1. Groq Vision object identification
-// 2. Product search
-// 3. Gets price range
-//
-// ============================================================
-
-export async function scanObject(
-  imageBase64: string
-): Promise<ScannerResult> {
-
-  if (
-    !imageBase64 ||
-    typeof imageBase64 !== 'string'
-  ) {
-    throw new Error(
-      'Image is required.'
-    );
-  }
-
-
-  try {
-
-    // --------------------------------------------------------
-    // STEP 1
-    // Identify object
-    // --------------------------------------------------------
-
-    console.log(
-      '1️⃣ Identifying object...'
-    );
-
-
-    const object =
-      await analyzeObject(
-        imageBase64
-      );
-
-
-    // --------------------------------------------------------
-    // STEP 2
-    // Search products
-    // --------------------------------------------------------
-
-    console.log(
-      '2️⃣ Searching products...'
-    );
-
-
-    const searchQuery =
-      object.searchQuery ||
-      object.name;
-
-
-    const products =
-      await searchProducts(
-        searchQuery
-      );
-
-
-    // --------------------------------------------------------
-    // STEP 3
-    // Calculate fallback price range
-    // --------------------------------------------------------
-    //
-    // The backend already calculates this.
-    // We use the backend result when available.
-    // If it isn't returned, calculate it locally.
-    // --------------------------------------------------------
-
-    const prices =
-      products
-
-        .map(
-          product =>
-            product.price
-        )
-
-        .filter(
-          (
-            price
-          ): price is number =>
-            typeof price === 'number' &&
-            Number.isFinite(price) &&
-            price > 0
-        );
-
-
-    let min:
-      number | null = null;
-
-    let max:
-      number | null = null;
-
-
-    if (
-      prices.length > 0
-    ) {
-
-      min =
-        Math.min(...prices);
-
-      max =
-        Math.max(...prices);
-
-    }
-
-
-    // --------------------------------------------------------
-    // STEP 4
-    // Return complete result
-    // --------------------------------------------------------
-
-    console.log(
-      '3️⃣ Scan completed.'
-    );
-
-
-    return {
-
-      object,
-
-      products,
-
-      priceRange: {
-
-        min,
-
-        max,
-
-        currency: 'INR',
-
-      },
-
-    };
-
-  } catch (error) {
-
-    console.error(
-      '❌ Complete scanner error:',
-      error
-    );
-
-
-    if (
-      error instanceof Error
-    ) {
-      throw error;
-    }
-
-
-    throw new Error(
-      'Object scanning failed.'
-    );
-
-  }
-}
-
-
-// ============================================================
-// FORMAT PRICE
-// ============================================================
-
-export function formatPrice(
-  price: number | null
-): string {
-
-  if (
-    price === null ||
-    !Number.isFinite(price)
-  ) {
-
-    return 'Price unavailable';
-
-  }
-
-
-  return `₹${price.toLocaleString(
-    'en-IN'
-  )}`;
-}
-
-
-// ============================================================
-// FORMAT PRICE RANGE
-// ============================================================
-
-export function formatPriceRange(
-  min: number | null,
-  max: number | null
-): string {
-
-  if (
-    min === null &&
-    max === null
-  ) {
-
-    return 'Price unavailable';
-
-  }
-
-
-  if (
-    min !== null &&
-    max !== null &&
-    min === max
-  ) {
-
-    return formatPrice(min);
-
-  }
-
-
-  if (
-    min !== null &&
-    max !== null
-  ) {
-
-    return `${formatPrice(
-      min
-    )} - ${formatPrice(max)}`;
-
-  }
-
-
-  if (
-    min !== null
-  ) {
-
-    return `From ${formatPrice(
-      min
-    )}`;
-
-  }
-
-
-  if (
-    max !== null
-  ) {
-
-    return `Up to ${formatPrice(
-      max
-    )}`;
-
-  }
-
-
-  return 'Price unavailable';
-}
-
-
-// ============================================================
-// API BASE URL
-// ============================================================
+// ------------------------------------------------------------
+// Base URL
+// ------------------------------------------------------------
+
+const API_BASE_URL = resolveApiBaseUrl({
+  envUrl: process.env.EXPO_PUBLIC_API_URL,
+  hostUri: Constants.expoConfig?.hostUri,
+  webHostname: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname : null,
+});
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
+}
+
+// ------------------------------------------------------------
+// Request helper
+// ------------------------------------------------------------
+
+async function request<T>(
+  path: string,
+  options: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {}
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 60000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if ((error as Error)?.name === 'AbortError') {
+      throw new ApiError('The server took too long to respond. Please try again.', 0, 'TIMEOUT');
+    }
+    throw new ApiError(
+      `Cannot reach the server at ${API_BASE_URL}. Make sure it is running and your phone is on the same Wi-Fi.`,
+      0,
+      'NETWORK'
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let data: any = null;
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => null);
+  } else {
+    const text = await response.text().catch(() => '');
+    data = { message: text };
+  }
+
+  if (!response.ok || data?.success === false) {
+    throw new ApiError(
+      data?.message || `Server error (${response.status})`,
+      response.status,
+      data?.code || 'ERROR'
+    );
+  }
+  return data as T;
+}
+
+// ------------------------------------------------------------
+// Endpoints
+// ------------------------------------------------------------
+
+export async function getHealth(): Promise<HealthStatus> {
+  return request<HealthStatus>('/health', { timeoutMs: 5000 });
+}
+
+export async function analyzeObject(imageDataUrl: string): Promise<ObjectAnalysis> {
+  if (!imageDataUrl) {
+    throw new ApiError('No image was provided.', 400, 'IMAGE_REQUIRED');
+  }
+  const data = await request<{ object: ObjectAnalysis }>('/scanner/analyze', {
+    method: 'POST',
+    body: { imageBase64: imageDataUrl },
+    timeoutMs: 90000,
+  });
+  if (!data?.object) {
+    throw new ApiError('The server did not return object information.', 502, 'EMPTY');
+  }
+  return data.object;
+}
+
+export async function searchProducts(query: string): Promise<ShoppingResult> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return { products: [], priceRange: { min: null, max: null, median: null, currency: 'INR' } };
+  }
+  const data = await request<ShoppingResult>('/scanner/search', {
+    method: 'POST',
+    body: { query: trimmed },
+  });
+  return {
+    products: Array.isArray(data.products) ? data.products : [],
+    priceRange: data.priceRange ?? { min: null, max: null, median: null, currency: 'INR' },
+  };
+}
+
+/**
+ * Identifies the object, then looks up shopping listings.
+ * A failed price search does not throw: the identification is still shown.
+ */
+export async function scanObject(imageDataUrl: string): Promise<ScannerResult> {
+  const object = await analyzeObject(imageDataUrl);
+
+  try {
+    const shopping = await searchProducts(object.searchQuery || object.name);
+    return { object, ...shopping, shoppingError: null, shoppingDisabled: false };
+  } catch (error) {
+    const apiError = error instanceof ApiError ? error : null;
+    return {
+      object,
+      products: [],
+      priceRange: { min: null, max: null, median: null, currency: 'INR' },
+      shoppingError: error instanceof Error ? error.message : 'Product search failed.',
+      shoppingDisabled: apiError?.code === 'SHOPPING_NOT_CONFIGURED',
+    };
+  }
+}
+
+export async function sendChat(messages: ChatMessage[]): Promise<string> {
+  const data = await request<{ reply: string }>('/chat', {
+    method: 'POST',
+    body: { messages },
+  });
+  return data.reply;
 }

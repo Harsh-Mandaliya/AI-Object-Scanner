@@ -1,31 +1,27 @@
-// src/services/scannerSession.ts
+// Holds the image currently being analysed.
+//
+// The photo is kept in memory instead of being passed as a route param,
+// because Expo Router URL-encodes params and a base64 image is far too large
+// for a URL anyway.
 
-let capturedImageUri: string | null = null;
-
-/**
- * Store the latest captured camera image URI.
- */
-export const setCapturedImageUri = (
-  uri: string
-): void => {
-  capturedImageUri = uri;
-
-  console.log(
-    '💾 Scanner session URI stored:',
-    uri
-  );
+export type CapturedImage = {
+  /** Something <Image> can display (file://, blob:, or data: URL). */
+  uri: string;
+  /** data:image/...;base64,... sent to the backend. */
+  dataUrl: string;
+  source: 'camera' | 'library';
 };
 
-/**
- * Get the latest captured image URI.
- */
-export const getCapturedImageUri = (): string | null => {
-  return capturedImageUri;
-};
+let current: CapturedImage | null = null;
 
-/**
- * Clear the stored image URI.
- */
-export const clearCapturedImageUri = (): void => {
-  capturedImageUri = null;
-};
+export function setCapturedImage(image: CapturedImage): void {
+  current = image;
+}
+
+export function getCapturedImage(): CapturedImage | null {
+  return current;
+}
+
+export function clearCapturedImage(): void {
+  current = null;
+}

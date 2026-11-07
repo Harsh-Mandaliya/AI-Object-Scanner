@@ -1,14 +1,29 @@
+# Dependencies
 node_modules/
+
+# Expo / build output
 .expo/
 dist/
 web-build/
+expo-env.d.ts
+ios/
+android/
+
+# Test output
 coverage/
 
+# Environment files (keys live only here)
 .env
 .env.*
 !.env.example
 server/.env
 
+# Python / virtualenvs (not used, but keep them out)
+.venv/
+venv/
+
+# Logs and OS files
 *.log
+npm-debug.*
 .DS_Store
 Thumbs.db
