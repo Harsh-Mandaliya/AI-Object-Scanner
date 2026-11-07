@@ -1,15 +1,16 @@
 export const colors = {
-  background: '#F4F5F7',
+  background: '#F4F6FB',
   surface: '#FFFFFF',
-  surfaceMuted: '#F9FAFB',
+  surfaceMuted: '#F8FAFC',
   border: '#E5E7EB',
-  text: '#111827',
-  textMuted: '#6B7280',
-  textSubtle: '#9CA3AF',
-  primary: '#111827',
+  text: '#0F172A',
+  textMuted: '#64748B',
+  textSubtle: '#94A3B8',
+  primary: '#0F172A',
   onPrimary: '#FFFFFF',
-  accent: '#2563EB',
-  accentSoft: '#EFF6FF',
+  accent: '#6366F1',
+  accentSoft: '#EEF2FF',
+  cyan: '#22D3EE',
   success: '#16A34A',
   successSoft: '#DCFCE7',
   warning: '#D97706',
@@ -18,17 +19,25 @@ export const colors = {
   dangerSoft: '#FEE2E2',
 } as const;
 
+// Brand gradient: indigo → violet → cyan.
+export const gradients = {
+  brand: ['#4F46E5', '#7C3AED', '#06B6D4'] as const,
+  dark: ['#0F172A', '#1E1B4B'] as const,
+  user: ['#4F46E5', '#7C3AED'] as const,
+  price: ['#0F172A', '#312E81'] as const,
+};
+
 export const radius = {
   sm: 10,
   md: 14,
   lg: 18,
-  xl: 22,
+  xl: 24,
 } as const;
 
 export const shadow = {
-  shadowColor: '#000000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 2,
+  shadowColor: '#0F172A',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 3,
 } as const;

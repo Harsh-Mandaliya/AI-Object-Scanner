@@ -6,10 +6,29 @@ AI Object Scanner is a cross-platform app (Android, iOS and web) built with **Ex
 
 API keys stay on the backend. The app never sees them.
 
+## 🙂 The project in simple words
+
+You take a photo of something, like a water bottle, headphones or a shoe. The app tells you **what it is** and **how much it costs** in online shops.
+
+1. 📸 **Take a photo.** Use the camera, or pick a picture from your gallery.
+2. 🤖 **AI looks at it.** The photo goes to our small server, which asks an AI model "what is this?". The AI answers with the name, brand, color, material and features.
+3. 🛒 **See prices.** The server searches Google Shopping for that item and shows real listings with prices, so you can compare and tap to buy.
+4. 💬 **Ask questions.** A chat assistant answers anything else you want to know.
+
+There are only two parts:
+
+| Part | What it is | Where |
+|---|---|---|
+| 📱 **App** | What you see and touch (screens, camera, chat, animations) | `src/` |
+| 🖥️ **Server** | Talks to the AI and the shopping search and keeps your API keys secret | `server/` |
+
+To make it work you need **one free key**, from Groq (for the AI). A SerpApi key is optional and adds live prices. Setup takes about 5 minutes; see [Setup and running](#-setup-and-running).
+
 ---
 
 ## Contents
 
+- [The project in simple words](#-the-project-in-simple-words)
 - [Features](#-features)
 - [How it works](#-how-it-works)
 - [Models and data](#-models-and-data)
@@ -29,7 +48,9 @@ API keys stay on the backend. The app never sees them.
 
 ## ✨ Features
 
-- 📸 **Camera scanning** with a framing guide, front/back camera switch and torch toggle.
+- 🎨 **Motion design**: a gradient hero header, a pulsing scan button, a radar-style live logo, chat bubbles that pop in, a typing animation, a scanning laser line on the camera and photo, a shutter flash, skeleton loading, an animated confidence bar and cards that slide in one after another.
+- 💬 **Graphic chat**: AI avatar, gradient message bubbles, icon suggestion chips, and a step-by-step setup card when the AI key is missing (no confusing errors).
+- 📸 **Camera scanning** with an animated framing guide, front/back camera switch and torch toggle.
 - 🖼️ **Pick from photos** if you already have a picture, or if camera access is denied. This also works in the web version.
 - 🤖 **AI identification**: name, brand, model, category, type, color, material, description and key features.
 - 🎯 **Confidence badge** (high / medium / low), plus a tip to retake the photo when the model is unsure.
@@ -100,9 +121,10 @@ AI-Object-Scanner/
 │   │   └── result.tsx        # Identification, price summary, product list
 │   ├── components/
 │   │   ├── ObjectCard.tsx    # Object details + confidence badge
-│   │   └── ProductCard.tsx   # One shopping listing
+│   │   ├── ProductCard.tsx   # One shopping listing
+│   │   └── motion.tsx        # Animations: fade/pop-in, pulse, ripple, scan line, typing dots
 │   ├── constants/
-│   │   └── theme.ts          # Colors, radii, shadow
+│   │   └── theme.ts          # Colors, gradients, radii, shadow
 │   └── services/
 │       ├── scannerApi.ts     # Backend client (timeouts, typed errors)
 │       ├── scannerSession.ts # In-memory hand-off of the captured image
@@ -309,12 +331,19 @@ The backend tests start the real Express app on a random port and swap `fetch` f
 | App | Expo SDK 58, React Native 0.88, React 19.3, TypeScript 6 |
 | Navigation | Expo Router (file-based stack) |
 | Device features | expo-camera, expo-image-picker, expo-web-browser |
+| Design & motion | expo-linear-gradient, @expo/vector-icons (Ionicons), React Native `Animated` |
 | Backend | Node.js, Express 5, cors |
 | AI | Groq API: `qwen/qwen3.8-27b` (vision), `openai/gpt-oss-20b` (chat) |
 | Shopping data | SerpApi Google Shopping |
 | Quality | node:test, ESLint (eslint-config-expo), `tsc`, expo-doctor |
 
 ## 📝 Changelog
+
+### v2.1.0 (2026-11)
+- **New look:** gradient design system (indigo → violet → cyan) and vector icons (Ionicons) instead of emoji.
+- **Motion:** pop-in chat bubbles, typing dots, a pulsing scan button, a radar ripple, a scanning laser line, a shutter flash, skeleton loading, staggered card entrances and an animated confidence bar. All animations use React Native's built-in `Animated` API.
+- **Chat:** when the server has no Groq key, the chat now shows a clear 3-step setup card and disables the input, instead of failing with an error. The status pill can be tapped to re-check the server.
+- Added `expo-linear-gradient` and `@expo/vector-icons`.
 
 ### v2.0.0 (2026-11)
 - **Upgraded** to Expo SDK 58 / React Native 0.88 / React 19.3 so the app runs in the current Expo Go, and pinned all dependency versions.
@@ -346,4 +375,6 @@ The backend tests start the real Express app on a random port and swap `fetch` f
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE). Copyright (c) 2026 Harsh Mandaliya.
+**Copyright © 2026 Harsh Mandaliya.**
+
+This project is released under the [MIT License](LICENSE). You can use, copy and modify it, as long as you keep the copyright notice and the license text.

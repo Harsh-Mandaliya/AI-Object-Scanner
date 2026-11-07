@@ -1,6 +1,6 @@
 {
   "name": "ai-object-scanner",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -17,11 +17,13 @@
     "check": "npm run typecheck && npm run lint && npm run test:all"
   },
   "dependencies": {
+    "@expo/vector-icons": "~15.0.2",
     "expo": "~58.0.23",
     "expo-camera": "~58.0.14",
     "expo-constants": "~58.0.15",
     "expo-font": "~58.0.11",
     "expo-image-picker": "~58.0.10",
+    "expo-linear-gradient": "~58.0.3",
     "expo-linking": "~58.0.16",
     "expo-router": "~58.0.30",
     "expo-splash-screen": "~58.0.13",
